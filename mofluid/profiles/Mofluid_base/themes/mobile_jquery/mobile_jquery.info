@@ -1,0 +1,24 @@
+name = "jQuery Mobile Theme"
+description = "A theme created using the jQuery Mobile framework."
+version = "6.x-3.x-beta2"
+core = "6.x"
+engine = phptemplate
+
+scripts[] = "scripts/script.js"
+stylesheets[all][] = "styles/style.css"
+
+regions[header] = "Header"
+regions[content] = "Content"
+regions[first] = "Primary"
+regions[second] = "Secondary"
+regions[footer] = "Footer"
+regions[banner] = "Banner"
+regions[headertop] = "Header Top"
+
+
+; Information added by drupal.org packaging script on 2011-09-12
+version = "6.x-3.0-beta1"
+core = "6.x"
+project = "mobile_jquery"
+datestamp = "1315853505"
+

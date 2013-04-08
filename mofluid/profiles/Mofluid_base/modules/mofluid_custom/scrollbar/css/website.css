@@ -1,0 +1,5 @@
+#wrapper {
+position:relative;
+z-index:1;
+height:200px;        /* Desired element height */
+}

@@ -1,0 +1,4 @@
+name = import products
+description = Get all the products from xml file
+package = Mofluid Custom
+core = 6.x

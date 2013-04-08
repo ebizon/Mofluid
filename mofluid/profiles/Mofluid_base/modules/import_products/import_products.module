@@ -1,0 +1,292 @@
+<?php
+//$Id$
+
+/*
+ * @file
+ *  Product import script
+ */
+
+
+/**
+ * o Contributor: * o Yogendra Prasad, Ebizon Netinfo (yogendra.prasad@ebizontek.com) – Implementation of hook_menu().
+ * @return array $items
+ *   associative array
+ */
+function import_products_menu() {
+    $items = array();
+	$items['import_products']=array(
+	'path' => 'import_products',
+	'title' => t('Import Products'),
+	'page callback' => 'import_products_page',
+	'access arguments' => array('access content'),
+	'access' => TRUE,
+	'type' => MENU_CALLBACK
+	);
+ return $items;		
+}
+
+/**
+ * o Contributor: * o Yogendra Prasad, Ebizon Netinfo (yogendra.prasad@ebizontek.com) – Callback function for menu 'import_products'.
+ * @return array $items
+ *   associative array
+ */
+function import_products_page() {
+	$out = import_products_cron();
+	return $out;
+}
+
+/**
+ * o Contributor: * o Yogendra Prasad, Ebizon Netinfo (yogendra.prasad@ebizontek.com) – Implementation of hook_cron().
+ * While running cron, it extract data from other server and save it to another server using node_save.
+ */
+function import_products_cron() {
+	global $user;
+	$aid = 1;
+	$aid_arr = array();
+	$query = db_query("SELECT options.oid as oid FROM {uc_attribute_options} options WHERE options.aid = %d",$aid);
+	while($aid_data = db_fetch_object($query)){
+	 $aid_arr[] = $aid_data->oid;	
+	}
+	$sku_arr = array();
+	global $base_url;
+	//$xmlStr = file_get_contents($base_url.'/prod.xml');
+	//$xmlStr = file_get_contents('http://localhost/mofluid_distribution/webservices/prod.xml');
+	$xmlStr = file_get_contents($base_url.'/profiles/Mofluid_base/required_files/webservices/prod.xml');
+	// print_r($xmlStr);die;
+    $xmlObj = simplexml_load_string($xmlStr);
+	$arrXml = objectsIntoArray($xmlObj);
+	//var_dump($arrXml);
+	$entry = $arrXml['product'];
+    for ($i = 0; $i < count($entry); $i++) {
+		$name = $entry[$i]['name'];
+		$sku = $entry[$i]['sku'];
+		//print($sku);die;
+		$category = $entry[$i]['category'];
+		//print_r($category);die;
+		$price = $entry[$i]['price'];
+		$description = $entry[$i]['description'];
+		global $base_url;
+		//$imageurl_prefix = 'http://localhost/mofluid_distribution/images/test_images/';
+		$imageurl_prefix = $base_url.'/profiles/Mofluid_base/required_files/images/test_images/';
+		$imageurl = $imageurl_prefix.$entry[$i]['imageurl'];
+	    require_once 'modules/node/node.pages.inc'; // Required for node_object_prepare();
+		
+		/* Product already exist in db */
+		$exist_product = db_result(db_query("SELECT p.nid FROM {uc_products} p WHERE p.model = '%s'",$sku));
+		if($exist_product){
+		   $node = node_load($exist_product);
+		} 
+		else {
+		   $node = new stdClass(); /* New product */
+	    }
+	    
+		$node->type = 'product';
+
+		  
+		 node_object_prepare($node); // This sets up all the default node fields so we don't accidentally leave something off.
+
+		  // Copy over all the existing settings from Drupal 5.
+		$node->taxonomy = array();   
+		$node->menu = array();
+		$node->uid = $user->uid; 
+		$node->title = $name; 
+		$node->created = time();
+		$node->changed = $node->created;
+		$node->promote = 0; // Display on front page ? 1 : 0
+		$node->sticky = 0;  // Display top of page ? 1 : 0
+		$node->format = 2;  // 1:Filtered HTML, 2: Full HTML
+		$node->status = 1 ;  // Published ? 1 : 0
+		$node->language = 'en';
+        // Set Ubercart variables
+		$node->model = $sku; // the SKU is a required field, so I generated a SKU based on the node title
+		$node->list_price =$price;
+		$node->cost = $price;
+		$node->sell_price = $price;
+		$node->default_qty = 1;
+		$node->pkg_qty = 1;  
+		
+		//$node_save($node);
+		
+		$term = taxonomy_get_term_by_name($category);
+        if($term[0]->tid){
+           $node->taxonomy[$term[0]->tid] = taxonomy_get_term($term[0]->tid);
+        }
+        
+        /*********IMAGE UPLOAD*********/
+        $file_temp = file_get_contents($imageurl);
+		$file_temp = file_save_data($file_temp, file_directory_path().'/'.basename($imageurl), FILE_EXISTS_REPLACE);
+		$file = new stdClass();
+		$file->filename = basename($file_temp);
+		$file->filepath = $file_temp;
+		$file->filemime = file_get_mimetype($file_temp);
+		$file->filesize = filesize($file_temp);
+        $file->uid = $user->uid;
+		$file->status = FILE_STATUS_PERMANENT;
+		$file->timestamp = time();
+		if(isset($node->field_image_cache[0]['fid'])){
+			$file_fid = $node->field_image_cache[0]['fid'];
+		}else{
+			drupal_write_record('files', $file);
+			$file_fid = $file->fid;
+		}
+		
+		//print("file location:".$file_temp);die;
+		
+		$node->field_image_cache = array(
+			array(
+			   'fid' => $file_fid,
+			   'title' => basename($file_temp),
+			   'filename' => basename($file_temp),
+			   'filepath' => $file_temp,
+			   'filesize' => filesize($file_temp),
+			   'description' =>  basename($file_temp),
+			   'list' => 1,
+			),
+		  );
+        /*********IMAGE UPLOAD END*********/
+       
+       $node->body = $description;
+       node_save($node);
+	   
+	   /*******Set slider image************************/
+	    $node = new stdClass(); /* New node */
+		$node->type = 'slider';
+
+		  
+		 node_object_prepare($node); // This sets up all the default node fields so we don't accidentally leave something off.
+
+		  // Copy over all the existing settings from Drupal 5.
+		//$node->taxonomy = array();   
+		//$node->menu = array();
+		$node->uid = $user->uid; 
+		$node->title = 'first_image'; 
+		$node->created = time();
+		$node->changed = $node->created;
+		$node->promote = 1; // Display on front page ? 1 : 0
+		$node->comment = 0;
+		$node->moderate = 0;
+		$node->sticky = 0;
+		$node->tnid = 0;
+		$node->translate = 0;
+		$node->status = 1 ;  // Published ? 1 : 0
+		
+		//$node_save($node);
+		
+		/*********IMAGE UPLOAD*********/
+		//$imageurl = 'http://localhost/mofluid_distribution/images/banner1.jpg';
+		$imageurl = $base_url.'/profiles/Mofluid_base/required_files/images/banner1.jpg';
+        $file_temp = file_get_contents($imageurl);
+		$file_temp = file_save_data($file_temp, file_directory_path().'/'.basename($imageurl), FILE_EXISTS_REPLACE);
+		$file = new stdClass();
+		$file->filename = basename($file_temp);
+		$file->filepath = $file_temp;
+		$file->filemime = file_get_mimetype($file_temp);
+		$file->filesize = filesize($file_temp);
+        $file->uid = $user->uid;
+		$file->status = FILE_STATUS_PERMANENT;
+		$file->timestamp = time();
+		if(isset($node->field_slider_images[0]['fid'])){
+			$file_fid = $node->field_slider_images[0]['fid'];
+		}else{
+			drupal_write_record('files', $file);
+			$file_fid = $file->fid;
+		}
+		
+		//print("file location:".$file_temp);die;
+		
+		$node->field_slider_images = array(
+			array(
+			   'fid' => $file_fid,
+			   'title' => basename($file_temp),
+			   'filename' => basename($file_temp),
+			   'filepath' => $file_temp,
+			   'filesize' => filesize($file_temp),
+			   'description' =>  basename($file_temp),
+			   'list' => 1,
+			),
+		  );
+        /*********IMAGE UPLOAD END*********/
+       
+       //$node->body = $description;
+       node_save($node);
+
+       /********* Set size attribute to products *********/
+       $nid = $node->nid;
+       $aid = 1;
+       $label = 'Size';
+       $ordering = 0;
+       $default_option = 1;
+       $required = 1;
+       $display = 1;
+       $parent = taxonomy_get_parents($term[0]->tid);
+       if(count($parent) > 0){
+         foreach ($parent as $parent_term) {
+			if($parent_term->vid == 8 && $parent_term->name != 'Bags'){
+			   db_query("INSERT INTO uc_product_attributes (nid, aid, label, ordering, default_option, required, display) VALUES (%d, %d, '%s', %d, %d, %d, %d)",$nid, $aid, $label, $ordering, $default_option, $required, $display);
+			   foreach($aid_arr as $aids){
+				       db_query("INSERT INTO uc_product_options (nid, oid) VALUES (%d, %d)",$nid, $aids);
+				   }
+			   break;
+			} 
+		} // end foreach
+       } // end if
+       $sku_arr[$node->nid] = $sku;
+	  // die("first node saved.!");
+	} // node save end
+  
+  /* Delete Unwanted product exist in db.*/
+  $node_delete = array();
+  $product_sku_arr = array();
+  $product_sku_arr = get_product_sku();
+  $node_delete = array_diff($product_sku_arr, $sku_arr);
+  if(count($node_delete) > 0){
+	  foreach($node_delete as $pnid => $sku_value ){
+		  node_delete($pnid);
+		  db_query("DELETE FROM uc_product_attributes WHERE nid = %d ",$pnid); // delete product attribute entry
+	   }
+   }
+  $output = t('All The products are updated');
+  return $output;		
+}
+
+/**
+ * o Contributor: * o Yogendra Prasad, Ebizon Netinfo (yogendra.prasad@ebizontek.com) – Function to parse XML to array.
+ *@para $arrObjData
+ *   XML Object
+ * @para $arrSkipIndices
+ *    optional
+ * @return $arrData
+ *   associative array
+ */
+function objectsIntoArray($arrObjData, $arrSkipIndices = array()) {
+    $arrData = array();
+    if (is_object($arrObjData)) {
+        $arrObjData = get_object_vars($arrObjData);
+    }
+    if (is_array($arrObjData)) {
+        foreach ($arrObjData as $index => $value) {
+            if (is_object($value) || is_array($value)) {
+                $value = objectsIntoArray($value, $arrSkipIndices); // recursive call
+            }
+            if (in_array($index, $arrSkipIndices)) {
+                continue;
+            }
+            $arrData[$index] = $value;
+        }
+    }
+    return $arrData;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function to get all SKU in an array.
+ * @return $product_sku
+ *   array of product SKU.
+ */
+function get_product_sku(){
+	  $product_sku = array();
+	  $result = db_query("SELECT p.nid,p.model FROM {uc_products} p WHERE 1");
+	  while($data = db_fetch_object($result)){
+		$product_sku[$data->nid] = $data->model;
+	  }
+	return $product_sku; 
+}

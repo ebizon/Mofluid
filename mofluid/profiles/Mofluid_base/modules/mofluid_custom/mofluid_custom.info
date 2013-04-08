@@ -1,0 +1,5 @@
+name = Mofluid Custom
+description = Mofluid Custom.
+package = Mofluid Custom
+core = 6.x
+

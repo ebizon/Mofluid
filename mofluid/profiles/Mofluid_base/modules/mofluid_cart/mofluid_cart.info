@@ -1,0 +1,6 @@
+;$Id$
+name = Mofluid Cart
+description = Mofluid Cart.
+package = Mofluid Custom
+core = 6.x
+

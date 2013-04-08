@@ -1,0 +1,7 @@
+#wrapper {
+    position:relative;
+    z-index:1;
+    width:/* your desired width, auto and 100% are fine */;
+    height:/* element height */;
+    overflow:/* hidden|auto|scroll */;
+}

@@ -1,0 +1,158 @@
+<?php
+/**
+ * @file
+ *  The implementation of Views Nivo Slider module.
+ */
+
+/**
+ * Implementation of hook_views_api().
+ */
+function views_nivo_slider_views_api() {
+  return array('api' => 2);
+}
+
+/**
+ * Implementation of template preprocess for the view
+ */
+function template_preprocess_views_nivo_slider_view(&$vars) {
+  $view    = $vars['view'];
+  $options = $vars['options'];
+
+  $vars['views_nivo_slider_id'] = 'views-nivo-slider-'. $view->name .'-'. $view->current_display;
+
+  // Prevent problems on update versions of this module
+  if (is_string($options['effect'])) {
+    $options['effect'] = array($options['effect'] => $options['effect']);
+  }
+
+  $cfg = array();
+  $params = array(
+    'startSlide'       => 0,
+    'effect'           => join(',', array_keys($options['effect'])),
+    'slices'           => (int) $options['slices'],
+    'animSpeed'        => (int) $options['animSpeed'],
+    'pauseTime'        => (int) $options['pauseTime'],
+    'directionNav'     => $options['directionNav'] == 'true' ? TRUE : FALSE,
+    'directionNavHide' => $options['directionNavHide'] == 'true' ? TRUE : FALSE,
+    'controlNav'       => $options['controlNav'] != 'disabled' ? TRUE : FALSE,
+    'controlNavThumbs' => FALSE,
+    'controlNavThumbsFromRel' => FALSE,
+    //'controlNavThumbsSearch'  => '',
+    //'controlNavThumbsReplace' => '',
+    'keyboardNav'      => $options['keyboardNav'] == 'true' ? TRUE : FALSE,
+    'pauseOnHover'     => $options['pauseOnHover'] == 'true' ? TRUE : FALSE,
+    'manualAdvance'    => $options['manualAdvance'] == 'true' ? TRUE : FALSE,
+    'captionOpacity'   => (float) $options['captionOpacity'],
+  );
+
+  if ($options['controlNav'] == 'thumbsIC') {
+    $params['controlNavThumbs'] = TRUE;
+    $params['controlNavThumbsSearch'] = "/{$options['imagefield_preset']}/";
+    $params['controlNavThumbsReplace'] = "/{$options['controlNavThumbsIC']}/";
+  }
+  elseif ($options['controlNav'] == 'thumbsField') {
+    $params['controlNavThumbs'] = TRUE;
+    $params['controlNavThumbsFromRel'] = TRUE;
+  }
+
+  $cfg[$vars['views_nivo_slider_id']] = $params;
+
+  drupal_add_js(array('views_nivo_slider' => $cfg), 'setting');
+
+  $_path = drupal_get_path('module', 'views_nivo_slider');
+  drupal_add_js($_path .'/js/jquery.nivo.slider.pack.js');
+  drupal_add_js($_path .'/views_nivo_slider.js');
+  drupal_add_css($_path .'/js/nivo-slider.css');
+  drupal_add_css($_path .'/views_nivo_slider.css');
+
+  // Style
+  if ($options['style'] != 'none') {
+    drupal_add_css($_path . '/styles/' . $options['style'] .'/custom-nivo-slider.css');
+  }
+}
+
+/**
+ * Implementation of template preprocess for the view fields
+ */
+function template_preprocess_views_nivo_slider_view_nivo_sliderfields(&$vars) {
+  $view = &$vars['view'];
+  $options = $vars['options'];
+  $style = $view->style_options;
+
+  $presetname = $view->style_options['imagefield_preset'];
+  $thumbnail_url = $title = $link = NULL;
+
+  // Force URL format for image_field
+  if (isset($view->field[$options['image_field']])) {
+    $view->field[$options['image_field']]->options['format'] = 'path_plain';
+    $view->field[$options['image_field']]->options['alter']['make_link'] = 0;
+  }
+
+  if ($style['controlNav'] == 'thumbsField') {
+    $view->field[$style['controlNavThumbsField']]->options['format'] = 'path_plain';
+    $view->field[$style['controlNavThumbsField']]->options['alter']['make_link'] = 0;
+  }
+
+  // link
+  if (isset($view->field[$options['link_field']])) {
+    //Node: Link
+    if ($view->field[$options['link_field']]->definition['handler'] == 'views_handler_field_node_link') {
+      $link = url('node/'.$view->result[$view->row_index]->nid);
+    }
+    // Link Field
+    else {
+      $view->field[$options['link_field']]->options['format'] = 'plain';
+    }
+  }
+  
+  $attributes = NULL;
+
+  foreach ($view->field as $id => $field) {
+    $field_output = $view->field[$id]->theme($vars['row']);
+
+    switch ($id) {
+    case $options['image_field']:
+      $image_url = $field_output;
+      break;
+    case $options['title_field']:
+      $title = $field_output;
+      $title_id = $title ? views_css_safe($id."-".$field->view->row_index) : '';
+
+      if ($title) {
+        $view->_vns_captions[$title_id] = $title;
+        $title_id = '#'.$title_id;
+      }
+      break;
+    case $options['link_field']:
+      if ($field->definition['handler'] != 'views_handler_field_node_link') {
+        $link = check_url($field_output);
+      }
+      break;
+    case $style['controlNavThumbsField']:
+      if ($style['controlNav'] == 'thumbsField') {
+        if (!empty($style['controlNavThumbsICField'])) {
+          $turl = imagecache_create_url($style['controlNavThumbsICField'], $field_output);
+        }
+        else {
+          $turl = $field_output;
+        }
+
+        $attributes = array('rel' => $turl);
+      }
+      break;
+    }
+  }
+
+  $img = theme('imagecache' , $presetname , $image_url, '', $title_id, $attributes, TRUE);
+
+  if ($link) {
+    $img = '<a href="'.$link.'" class="views-processed">'.$img.'</a>';
+  }
+
+
+  $object = new StdClass;
+  $object->image = $img;
+
+  $vars['content'] = $img;
+}
+

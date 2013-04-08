@@ -1,0 +1,282 @@
+<?php
+
+/**
+ * @file
+ * Show/hide attributes based on the values of other attributes.
+ *
+ * Some attributes may not be applicable depending upon the value of another
+ * attribute.  It may be desireable to hide the attribute unless an appropriate 
+ * value is selected for the other attribute to avoid confusing users.  This
+ * module has an administrative interface for specifying the dependencies
+ * and Javascript code for hiding and showing the attributes.
+ */
+
+/**
+ * Implement hook_menu().
+ */
+function uc_dropdown_attributes_menu() {
+  $items = array();
+
+  $items['node/%node/edit/dependencies'] = array(
+    'title' => 'Dependencies',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('uc_dropdown_attributes', 1),
+    'access callback' => uc_attribute_product_access,
+    'access arguments' => array(1),
+    'type' => MENU_LOCAL_TASK,
+    'weight' => 1,
+    'file' => 'dependent_dropdown.inc',
+  );
+  $items['node/%node/edit/dependencies/%/callback'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'uc_dropdown_attributes_edit_callback',
+    'page arguments' => array(4),
+    'access callback' => TRUE,
+    'file' => 'dependent_dropdown.inc',
+  );
+  $items['node/%/dependencies/%/dependency'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'uc_dropdown_attributes_dependency',
+    'page arguments' => array(1, 3),
+    'access callback' => TRUE,
+  );
+  $items['node/%/dependencies/%/activate'] = array(
+    'type' => MENU_CALLBACK,
+    'page callback' => 'uc_dropdown_attributes_activate',
+    'page arguments' => array(1, 3),
+    'access callback' => TRUE,
+  );
+  return $items;
+}
+
+/**
+ * Implement hook_init().
+ */
+function uc_dropdown_attributes_init() {
+  drupal_add_css(drupal_get_path('module', 'uc_dropdown_attributes') .
+                 '/uc_dropdown_attributes.css');
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function uc_dropdown_attributes_form_alter(&$form, &$form_state, $form_id) {
+  if (preg_match('/^uc_product_kit_add_to_cart_form.*/', $form_id)) {
+    foreach ($form['products'] as $key=>$value) {
+      if (is_numeric($key)) {
+        uc_dropdown_attributes_product_alter($key,
+          $form['products'][$key]['attributes']);
+        $query = 'SELECT COUNT(*) FROM {uc_dropdown_attributes} WHERE nid=%d';
+        $nrows=db_result(db_query($query, $key));
+        if ($nrows) {
+          $form['node_id'] = array(
+            '#type' =>  'hidden',
+            '#value' => $form['nid']['#value'],
+          );
+          // Make sure these have not been added more than once.
+          if (!isset($form['#validate']) ||
+              !in_array('uc_dropdown_attributes_product_validate',
+                        $form['#validate'])) {
+            $form['#validate'][] = 'uc_dropdown_attributes_product_validate';
+          }
+          if (!isset($form['#after_build']) ||
+              !in_array('uc_dropdown_attributes_build',
+                        $form['#after_build'])) {
+            $form['#after_build'][] = 'uc_dropdown_attributes_build';
+          }
+        }
+      }
+    }
+  }
+  if (preg_match('/^uc_product_add_to_cart_form.*/', $form_id)) {
+    uc_dropdown_attributes_product_alter($form['nid']['#value'],
+      $form['attributes']);
+    $query = 'SELECT COUNT(*) FROM {uc_dropdown_attributes} WHERE nid=%d';
+    $nrows=db_result(db_query($query, $form['nid']['#value']));
+    if ($nrows) {
+      $form['node_id'] = array(
+        '#type' =>  'hidden',
+        '#value' => $form['nid']['#value'],
+      );
+      $form['#validate'][] = 'uc_dropdown_attributes_product_validate';
+      $form['#after_build'][] = 'uc_dropdown_attributes_build';
+    }
+  }
+}
+
+/**
+ * Alter products in preparation for drop down attributes.
+ */
+function uc_dropdown_attributes_product_alter($nid, &$attributes) {
+  $sql = 'SELECT aid, required FROM {uc_dropdown_attributes} WHERE nid=%d';
+  $result = db_query($sql, $nid);
+  while ($attribute = db_fetch_object($result)) {
+    if ($attribute->required) {
+      switch ($attributes[$attribute->aid]['#type']) {
+      case 'select':
+        if (count($attributes[$attribute->aid]['#options'])) {
+          $attributes[$attribute->aid]['#options'] =
+            array('' => t('Please select')) +
+                  $attributes[$attribute->aid]['#options'];
+          unset($attributes[$attribute->aid]['#default_value']);
+        }
+        break;
+      case 'radios':
+        if (count($attributes[$attribute->aid]['#options'])) {
+          unset($attributes[$attribute->aid]['#default_value']);
+        }
+        break;
+      case 'textfield':
+        unset($attributes[$attribute->aid]['#default_value']);
+        break;
+      default:
+      }
+    }
+  }
+}
+
+/**
+ * Adds Javascript to the product pages.
+ */
+function uc_dropdown_attributes_build($form, &$form_state) {
+  drupal_add_js(drupal_get_path('module', 'uc_dropdown_attributes') .
+                '/displayfields.js');
+  return $form;
+}
+
+/**
+ * Retrieves the attribute dependencies.
+ */
+function uc_dropdown_attributes_dependency($nid, $aid) {
+  $result = new stdClass();
+  $query = 'SELECT parent_aid, parent_values, required FROM {uc_dropdown_attributes} WHERE nid=%d && aid=%d';
+  $item = db_fetch_object(db_query($query, $nid, $aid));
+  if (!$item) {
+    $result->status = FALSE;
+    drupal_json($result);
+  }
+  else {
+    $result->status = TRUE;
+    $result->aid = $aid;
+    $result->parent_aid = $item->parent_aid;
+    $result->parent_values = unserialize($item->parent_values);
+    $result->required = $item->required;
+    drupal_json($result);
+  }
+}
+
+/**
+ * Retrieves the attribute dependencies.
+ */
+function uc_dropdown_attributes_activate($nid, $aid) {
+  $response = new stdClass();
+  $query = 'SELECT aid FROM {uc_dropdown_attributes}
+    WHERE nid=%d && parent_aid=%d';
+  $result = db_query($query, $nid, $aid);
+  $response->aid = array();
+  $response->parent_aid = $aid;
+  $response->nid = $nid;
+  while  ($item=db_fetch_object($result)) {
+    $response->aid[] = $item->aid;
+  }
+  if (count($response->aid)>0) {
+    $response->status = TRUE;
+  }
+  else {
+    $response->status = FALSE;
+  }
+  drupal_json($response);
+}
+
+/**
+ * Handles the validation of required fields.
+ */
+function uc_dropdown_attributes_product_validate($form, &$form_state) {
+  if (preg_match('/^uc-product-kit-add-to-cart-form.*/', $form['#id'])) {
+    foreach ($form['products'] as $key=>$value) {
+      if (is_numeric($key)) {
+        $sql = 'SELECT aid, parent_aid, parent_values FROM {uc_dropdown_attributes}
+          WHERE required=1 AND nid=%d';
+        $result = db_query($sql, $key);
+        while ($item = db_fetch_object($result)) {
+          $values = unserialize($item->parent_values);
+          if (is_array($form_state['values']['products'][$key]['attributes'][$item->parent_aid])) {
+            if (count(array_intersect($values, $form_state['values']['products'][$key]['attributes'][$item->parent_aid]))>0) {
+              uc_dropdown_attributes_attribute_value_check($item->aid,
+                $form_state['values']['products'][$key]['attributes'][$item->aid]);
+            }
+          }
+          else {
+            if (in_array($form_state['values']['products'][$key]['attributes'][$item->parent_aid], $values)) {
+              uc_dropdown_attributes_attribute_value_check($item->aid,
+                $form_state['values']['products'][$key]['attributes'][$item->aid]);
+            }
+          }
+        }
+      }
+    }
+  }
+  else {
+    $sql = 'SELECT aid, parent_aid, parent_values FROM {uc_dropdown_attributes}
+      WHERE required=1 AND nid=%d';
+    $result = db_query($sql, $form_state['values']['nid']);
+    while ($item = db_fetch_object($result)) {
+      $values = unserialize($item->parent_values);
+      if (is_array($form_state['values']['attributes'][$item->parent_aid])) {
+        if (count(array_intersect($values, $form_state['values']['attributes'][$item->parent_aid]))>0) {
+          uc_dropdown_attributes_attribute_value_check($item->aid,
+            $form_state['values']['attributes'][$item->aid]);
+        }
+      }
+      else {
+        if (in_array($form_state['values']['attributes'][$item->parent_aid],
+            $values)) {
+          uc_dropdown_attributes_attribute_value_check($item->aid,
+            $form_state['values']['attributes'][$item->aid]);
+        }
+      }
+    }
+  }
+}
+
+function uc_dropdown_attributes_attribute_value_check($aid, $values) {
+  if (is_array($values)) {
+    if (count(array_filter($values,'nonzero'))==0) {
+      $attribute = uc_attribute_load($aid);
+      form_set_error('attributes][' . $aid,
+                     $attribute->label . ' ' .  t('field is required'));
+    }
+  }
+  else {
+    if (strlen($values)==0) {
+      $attribute = uc_attribute_load($aid);
+      form_set_error('attributes][' . $aid,
+                     $attribute->label . ' ' . t('field is required'));
+    }
+  }
+} 
+
+function nonzero($var) {
+  return $var!=0;
+}
+
+function uc_dropdown_attributes_product_description_alter(&$description,
+                                                          $product) {
+  foreach ($description['attributes'] as $key => $value) {
+    if (is_numeric($key) && count($value['#options'])==1) {
+      if (strlen($value['#options'][0])==0) {
+        unset($description['attributes'][$key]);
+      }
+    }
+  }
+}
+
+function uc_dropdown_attributes_order_product_alter(&$product, $order) {
+  foreach ($product->data['attributes'] as $key => $value) {
+    if (count($value)==1) {
+      if (strlen($value[0])==0) {
+        unset($product->data['attributes'][$key]);
+      }
+    }
+  }
+}

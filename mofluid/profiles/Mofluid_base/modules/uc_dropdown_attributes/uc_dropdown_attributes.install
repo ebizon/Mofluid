@@ -1,0 +1,70 @@
+<?php
+
+/**
+ * @file
+ * Install, update and uninstall functions for the
+ * uc_dropdown_attributes module.
+ */
+
+/**
+ * Implement hook_install().
+ */
+function uc_dropdown_attributes_install() {
+  drupal_install_schema('uc_dropdown_attributes');
+}
+
+/**
+ * Implement hook_uninstall().
+ */
+function uc_dropdown_attributes_uninstall() {
+  drupal_uninstall_schema('uc_dropdown_attributes');
+}
+
+/**
+ * Implement hook_schema().
+ */
+function uc_dropdown_attributes_schema() {
+  $schema['uc_dropdown_attributes'] = array(
+    'description' => 'Stores attributes that are displayed depending on the value of another attribute.',
+    'fields' => array(
+      'nid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Node id of product',
+      ),
+      'aid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Attribute id of child',
+      ),
+      'parent_aid' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'description' => 'Attribute id of parent',
+      ),
+      'parent_values' => array(
+        'type' => 'text',
+        'not null' => TRUE,
+        'size' => 'normal',
+        'description' => 'Values of the parent attribute that trigger the dependent attribute',
+      ),
+      'required' => array(
+        'type' => 'int',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'default' => 0,
+        'size' => 'tiny',
+        'description' => 'Whether the dependent attribute is optional (0) or required (1)',
+      ),
+    ),
+    'primary key' => array('nid', 'aid'),
+  );
+  return $schema;
+}
+

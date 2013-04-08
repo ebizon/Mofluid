@@ -1,0 +1,166 @@
+<?php
+
+/**
+ * This module provides a simple way to create forms and questionnaires.
+ *
+ * Add infinite/sliding pager functionality to ajax-enabled Views
+ *
+ * @author Ben Buckman (thebuckst0p)
+ * @author Seth Sandler (cerup)
+ */
+  
+ /**
+ * Implement hook_form_alter().
+ * Add Infinite pager option to Views UI
+ */
+function views_infinite_pager_form_alter(&$form, &$form_state, $form_id) {
+  if ($form_id == 'views_ui_edit_display_form' && $form_state['section'] == 'use_pager') {
+    $form['use_pager']['#options'] += array('infinite' => t('Infinite pager'));
+    $form['use_pager']['#options'] += array('infinite-auto-load' => t('Infinite Auto Load pager'));
+  
+    //form description
+    $form['use_pager']['weee'] = array(
+      '#type' => 'markup',
+      '#prefix' => '<br /><div class="form-item"><ul>',
+      '#value' => '<li>' . t('Infinite pager: creates a infinite page with a "more" button at the bottom.') . '</li>
+               <li>' . t('Infinite Auto Load pager: automatically loads the next page as the scrollbar nears the bottom of the current page.') . '</li>',
+      '#suffix' => '</ul></div><br />', // Add markup after form item
+      '#weight' => 10,
+    );
+  }
+}
+
+/**
+ * Implement hook_theme().
+ * Add a theme function for the Infinite pager
+ */
+function views_infinite_pager_theme() {
+  return array(
+    
+    // sliding mini-pager for Views ajax
+    'views_infinite_pager' => array(
+      'arguments' => array('tags' => array(), 'limit' => 10, 'element' => 0, 'parameters' => array()),
+      // hook_theme for views_mini_pager has a 'pattern' set, leaving out here
+    ),
+
+    // link in infinite pager
+    'infinite_pager_more' => array(
+      'arguments' => array('text' => NULL, 'limit' => NULL, 'element' => 0, 'interval' => 1, 'parameters' => array()),
+    ),
+      
+  );
+}
+
+/**
+ * 'infinite' pager, replaces Views' mini_pager, use for ajax views
+ * adapted from Views' theme_views_mini_pager()
+ */
+function theme_views_infinite_pager($tags = array(), $limit = 10, $element = 0, $parameters = array(), $quantity = 9) {
+  
+  global $pager_page_array, $pager_total;
+
+  // Calculate various markers within this pager piece:
+  // Middle is used to "center" pages around the current page.
+  $pager_middle = ceil($quantity / 2);
+  // current is the page we are currently paged to
+  $pager_current = $pager_page_array[$element] + 1;
+  // max is the maximum page number
+  $pager_max = $pager_total[$element];
+  // End of marker calculations.
+
+  // no previous or current or last, just More/next
+   $more_text = t('more');
+   $li_next = theme('infinite_pager_more', $more_text, $limit, $element, 1, $parameters);
+   if (empty($li_next)) {
+    //$li_next = "&nbsp;";
+  return '';
+  }
+
+  if ($pager_total[$element] > 1) {
+    $items[] = array(
+      'class' => 'pager-next',
+      'data' => $li_next,
+    );
+    return theme('item_list', $items, NULL, 'ul', array('class' => 'pager infinite-pager'));
+  }
+}
+
+/**
+ * for special infinite_pager, override default ajax_view.js w/ custom
+ * (leave the default alone, this just overwrites the functions on the client side)
+ *
+ * should be in right order b/c generic (template_) preprocessors run before custom ones, 
+ *  (but if it breaks, check the order -- maybe put this in the theme instead of the module, runs later)
+ *
+ * adapted from views' template_preprocess_views_view()
+ *
+ * note: tried to use JS Alter module here, w/ its hook_js_alter, but it didn't work,
+ * b/c ajax_view.js is invoked by preprocess_views_view(), which runs AFTER preprocess_page, where hook_js_alter is invoked
+ */
+function views_infinite_pager_preprocess_views_view(&$vars) {
+  
+  $view = $vars['view'];
+
+  // TODO this should be set per-view in the UI!
+  if ($view->use_ajax and ($view->pager['use_pager']==='infinite' or $view->pager['use_pager']==='infinite-auto-load')) {
+    //set infinite-pager so we can identify this view
+    $vars['classes'] .= ' infinite-pager';
+    
+    //add a infinite-auto-load-pager class so we know when we're using an auto-load pager
+    if ($view->pager['use_pager']==='infinite-auto-load') {
+      $vars['classes'] .= ' infinite-auto-load-pager'; 
+    }
+ 
+    // pass the same params as the generic does
+    $exposed_input = isset($view->exposed_data_raw) ? $view->exposed_data_raw : NULL;
+    
+    // replace a views_theme_functions() list w/ 'infinite' pager
+    $vars['pager'] = theme('views_infinite_pager', $exposed_input, $view->pager['items_per_page'], $view->pager['element']);
+
+    // special JS
+    drupal_add_js(drupal_get_path('module', 'views_infinite_pager') . "/js/views_infinite_pager.js");
+  }
+}
+
+/**
+ * Modified theme_pager_next()
+ *
+ * @param $text
+ *   The name (or image) of the link.
+ * @param $limit
+ *   The number of query results to display per page.
+ * @param $element
+ *   An optional integer to distinguish between multiple pagers on one page.
+ * @param $interval
+ *   The number of pages to move forward when the link is clicked.
+ * @param $parameters
+ *   An associative array of query string parameters to append to the pager links.
+ * @return
+ *   An HTML string that generates this piece of the query pager.
+ *
+ * @ingroup themeable
+ */
+function theme_infinite_pager_more($text, $limit, $element = 0, $interval = 1, $parameters = array()) {
+  global $pager_page_array, $pager_total;
+  $output = '';
+
+  // If we are anywhere but the last page
+  if ($pager_page_array[$element] < ($pager_total[$element] - 1)) {
+    $page_new = pager_load_array($pager_page_array[$element] + $interval, $element, $pager_page_array);
+
+    // dsm(array('for'=>'infinite_pager_more', 'page_new'=>$page_new, 'args'=>func_get_args()));
+
+    // // If the next page is the last page, mark the link as such.
+    // if ($page_new[$element] == ($pager_total[$element] - 1)) {
+    //   $output = theme('pager_last', $text, $limit, $element, $parameters);
+    // }
+    // // The next page is not the last page.
+    // else {
+      $output = theme('pager_link', $text, $page_new, $element, $parameters);
+
+    //*** not differentiating next from last, just 'More' ***//
+    // }
+  }
+
+  return $output;
+}

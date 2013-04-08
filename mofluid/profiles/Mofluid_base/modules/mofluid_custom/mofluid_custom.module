@@ -1,0 +1,835 @@
+<?php
+
+//$Id$
+
+/*
+ * @file
+ *  Custom script
+ */
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  implementation of hook_menu()
+ * @return $items
+ *    associative array.
+ */
+function mofluid_custom_menu() {
+  $items['product-images/%node'] = array(
+    'title callback' => 'product_title',
+    'title arguments' => array(1),
+    'description' => 'Product Images',
+    'page callback' => 'product_page_images',
+    'page arguments' => array(1),
+    'access callback' => 'user_access',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Callback function of menu 'product-images/%node'
+ * @return $product_title
+ *   node title
+ */
+function product_title($node) {
+  $product_title = $node->title;
+  return $product_title;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Callback function of menu 'product-images/%node'
+ * @return $product_title
+ *   node title
+ */
+function product_page_images($node) {
+  return theme('product_node_images', $node);
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – hook_init() for adding js and css files while page load.
+ * @return
+ *   nothing
+ */
+function mofluid_custom_init() {
+  global $user;
+  /* Handle +All term */
+  if (arg(0) == 'taxonomy' && arg(1) == 'term') {
+    $all_tid = arg(2);
+    $terms = taxonomy_get_term($all_tid);
+    if ($terms->name == '+All') {
+      $parents = taxonomy_get_parents($terms->tid);
+      foreach ($parents AS $parent) {
+        $parent_tid = $parent->tid;
+      }
+      drupal_goto("taxonomy/term/$parent_tid/all");
+    }
+  }
+  /* End */
+
+  if (arg(0) == 'sub_sub_category') {
+    $tid = arg(1);
+    $term = taxonomy_get_children($tid);
+    if (count($term) == 0) {
+      drupal_goto("taxonomy/term/$tid");
+    }
+  }
+  drupal_add_css(drupal_get_path('theme', 'mobile_jquery') . '/jquery.mobile-1.0.1.min.css');
+  drupal_add_js(drupal_get_path('theme', 'mobile_jquery') . '/functions.js');
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Remove the extra empty field on multiple valued CCK fields
+ */
+function mofluid_custom_form_alter(&$form, &$form_state, $form_id) {
+  $content_type_arr = array(
+    'slider_node_form',
+  );
+
+  if (in_array($form_id, $content_type_arr)) {
+    remove_unwanted_formfields($form);
+  }
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Function to hide unwanted form fields.
+ * @para $form
+ *    form valriable as referenec
+ * @return
+ *    $form
+ */
+function remove_unwanted_formfields(&$form) {
+  $form['buttons']['preview']['#attributes'] = array('style' => 'display:none');
+  $form['author']['#attributes'] = array('style' => 'display:none');
+  $form['options']['#attributes'] = array('style' => 'display:none');
+  $form['menu']['#attributes'] = array('style' => 'display:none');
+  $form['comment_settings']['#attributes'] = array('style' => 'display:none');
+  $form['path']['#attributes'] = array('style' => 'display:none');
+  $form['format']['#attributes'] = array('style' => 'display:none');
+  $form['revision_information']['#attributes'] = array('style' => 'display:none');
+  $form['attachments']['#attributes'] = array('style' => 'display:none');
+  return $form;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Function to get products stock details.
+ * @para $nid
+ *    product node nid
+ * @return
+ *    $output (string 'In Stock' if stock available else 'Out Of Stock')
+ */
+function get_stock_status($nid) {
+  $stock_level = '';
+  $stock_level = db_result(db_query("SELECT stock FROM {uc_product_stock} stock WHERE (stock.nid = %d)", $nid));
+  $stocklevel = (!empty($stock_level)) ? t("In Stock") : t("Out Of Stock");
+  return $stocklevel;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Function to get percentage off.
+ * @para $list_price,$sell_price
+ *    prices of product
+ * @return
+ *    $output (percentage off)
+ */
+function get_percentage_off($list_price, $sell_price) {
+  $percentage_off = '';
+  if ($list_price > $sell_price) {
+    $percentage_off = (($list_price - $sell_price) / $list_price) * 100;
+  }
+  if ($percentage_off != '') {
+    $output = number_format($percentage_off, 1, '.', '') . '% Off';
+  }
+  return $output;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Implementing hook_nodeapi().
+ *
+ */
+function mofluid_custom_title($title) {
+  if (arg(0) == 'sub_category' || arg(0) == 'sub_sub_category') {
+    $tid = arg(1);
+    $term = taxonomy_get_term($tid);
+    if (is_object($term)) {
+      if ($term->name) {
+        //$title = '<div id="category-title">'."Categories in ".$term->name.'</div>';
+        $title = '<div id="category-title">' . $term->name . '</div>';
+      }
+    }
+  }
+  else if (arg(0) == 'cart') {
+    $title = '';
+  }
+  else {
+    $title = $title;
+  }
+  return $title;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Implementing hook_block().
+ * This block is invoked on product details page to show size option using jquery.
+ * @return array
+ *    associative array contains block data and subject.
+ *
+ */
+function mofluid_custom_block($op = 'list', $delta = 0, $edit = array()) {
+  if ($op == 'list') {
+    $blocks[0] = array(
+      'info' => t('Size option'),
+      'weight' => 0,
+      'status' => 1,
+      'region' => 'content',
+    );
+    $blocks[1] = array(
+      'info' => t('Slider'),
+      'weight' => 0,
+      'status' => 1,
+      'region' => 'banner',
+    );
+    return $blocks;
+  }
+  /*else if ($op == 'view') {
+    switch ($delta) {
+      case 0:
+        $block = array(
+          'subject' => t('Select size (Indian Size)'),
+          'content' => get_size_options(),
+        );
+        break;
+
+      case 1:
+        $block = array(
+          'subject' => t(''),
+          'content' => get_slider_images(),
+        );
+        break;
+    }
+    return $block;
+  }*/
+  else if ($op == 'view') {
+    //switch ($delta) {
+      /*case 0:
+        $block = array(
+          'subject' => t('Select size (Indian Size)'),
+          'content' => get_size_options(),
+        );
+        break;*/
+
+      //case 1:
+        $block = array(
+          'subject' => t(''),
+          'content' => get_slider_images(),
+        );
+      //  break;
+    //}
+    return $block;
+  }
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Callback function of block[0].
+ * @return $output
+ *    options of size as string.
+ */
+/*function get_size_options() {
+  $i = 0;
+  drupal_add_js(drupal_get_path('theme', 'mobile_jquery') . '/jquery.js');
+  drupal_add_js(drupal_get_path('module', 'mofluid_custom') . '/mofluid_custom.js');
+  $nid = check_plain(arg(1));
+  $output = '';
+  $status = FALSE;
+  $output = '<div id="sizes-wrapper-elements-id" class="sizes-wrapper-elements">';
+  $query = "SELECT attr_option.name AS name
+	          FROM {uc_attribute_options} attr_option
+	          INNER JOIN {uc_product_options} pro_option ON attr_option.oid = pro_option.oid
+	          WHERE pro_option.nid = %d";
+  $result = db_query($query, $nid);
+  while ($data = db_fetch_object($result)) {
+    $i++;
+    $status = TRUE;
+    $output .= '<div id="' . $i . '" class="size">' . $data->name . '</div>';
+  }
+  $output .= '</div>';
+  if ($status) {
+    return $output;
+    unset($i);
+  }
+  return '';
+}*/
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Callback function of block[1].
+ * @return $output
+ *   slider images in an array
+ */
+function get_slider_images() {
+  global $base_url;
+  $result = db_query("SELECT node.nid AS nid,term_data.tid AS term_data_tid,node.created AS node_created
+					 FROM {node} node
+					 LEFT JOIN {term_node} term_node ON node.vid = term_node.vid
+					 LEFT JOIN {term_data} term_data ON term_node.tid = term_data.tid
+                    WHERE (node.type in ('slider')) AND (node.status = 1)
+                    ORDER BY node_created DESC");
+  $output = '<div id="slider1"  class="swipe"><ul>';
+  while ($data = db_fetch_object($result)) {
+    $node = node_load($data->nid);
+    $image = $node->field_slider_images[0]['filepath'];
+    if ($image) {
+      $imagefullpath = '<img src="' . $base_url . '/' . $image . '"/>';
+      $output .= '<li style="display:none"><div>' . l($imagefullpath, 'taxonomy/term/' . $data->term_data_tid, array('html' => true,)) . '</div></li>';
+    }
+  }
+
+  $output .= '</ul></div>';
+  return $output;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Function to get previous and next button on product details page..
+ * @return $output
+ *    a previous link as string.
+ *
+ *
+ */
+function node_previous_button($nid) {
+  $output = '';
+  $sql = "SELECT node.nid AS nid,node.nid AS node_nid
+ FROM {node} node
+ LEFT JOIN {term_node} term_node ON node.vid = term_node.vid
+ LEFT JOIN {term_data} term_data ON term_node.tid = term_data.tid
+ WHERE
+   (node.type in ('product')) AND
+   (node.status = 1) AND
+   (term_data.vid in ('8')) AND
+   (node.nid < %d ) ORDER BY node_nid DESC";
+  $result = db_query($sql, $nid);
+  $node_previous = db_fetch_object($result);
+  if ($node_previous->nid) {
+    $output = '<div class="pageprevious">' . l('', 'node/' . $node_previous->nid, array('query' => '#page_top')) . '</div>';
+  }
+  else {
+    $output = '<div class="pageprevious">' . t('') . '</div>';
+  }
+
+  return $output;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Function to get previous and next button on product details page..
+ * @return $output
+ *    a nect link as string.
+ *
+ *
+ */
+function node_next_button($nid) {
+  $output = '';
+  $sql = "SELECT node.nid AS nid,node.nid AS node_nid
+ FROM {node} node
+ LEFT JOIN {term_node} term_node ON node.vid = term_node.vid
+ LEFT JOIN {term_data} term_data ON term_node.tid = term_data.tid
+ WHERE
+   (node.type in ('product')) AND
+   (node.status = 1) AND
+   (term_data.vid in ('8')) AND
+   (node.nid > %d ) ORDER BY node_nid ASC";
+  $result = db_query($sql, $nid);
+  $node_next = db_fetch_object($result);
+  if ($node_next->nid) {
+    $output = '<div class="pagenext">' . l('', 'node/' . $node_next->nid, array('query' => '#page_top')) . '</div>';
+  }
+  else {
+    $output = '<div class="pagenext">' . t('') . '</div>';
+  }
+
+  return $output;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Implementation of hook_theme().
+ * @return
+ *   $form an associative array of form elements.
+ */
+function mofluid_custom_theme() {
+  return array(
+    'zoom_image' => array(
+      'arguments' => array('node' => NULL),
+      'template' => 'zoom_image'),
+    'product_node_images' => array(
+      'arguments' => array('node' => NULL),
+      'template' => 'product_node_images'),
+  );
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Function to get zoom functionality on node product page.
+ * @return $output
+ *    string.
+ */
+function get_zoom_image($node) {
+  //drupal_add_css(drupal_get_path('module', 'mofluid_custom').'/zoom/zoom.css');
+  //drupal_add_js(drupal_get_path('module', 'mofluid_custom').'/jquery.zoom-min.js');
+  //drupal_add_js(drupal_get_path('module','mofluid_custom').'/jquery.zoom.js');
+  //drupal_add_js(drupal_get_path('module','mofluid_custom').'/display.js');
+
+  return theme('zoom_image', $node);
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) –  Function to append a div on page.tpl.php to sequence of order completion.
+ * @return $output
+ *    string.
+ */
+function append_custom_div() {
+  $output = '';
+  if (arg(0) == 'cart' && arg(1) == 'checkout') {
+    $arg = arg(2);
+    switch ($arg) {
+      case 'review':
+        $output = "<div class='order-squenece'><center>Confirm Order ( 2/3 steps )</center></div>";
+        break;
+
+      case 'complete':
+        $output = "<div class='order-squenece'><center>Order Completion ( 3/3 steps )</center></div>";
+        break;
+
+      default:
+        $output = "<div class='order-squenece'><center>Shipping Address ( 1/3 steps )</center></div>";
+        break;
+    } // end switch
+  } // end if
+  return $output;
+}
+
+// end function
+
+//function to change overridden view to normal
+
+function mofluid_custom_views_default_views_alter(&$views)
+	{
+	if (array_key_exists('taxonomy_term', $views)) {
+    $view = new view;
+	$view->name = 'taxonomy_term';
+	$view->description = 'A view to emulate Drupal core\'s handling of taxonomy/term; it also emulates Views 1\'s handling by having two possible feeds.';
+	$view->tag = 'default';
+	$view->base_table = 'node';	
+	$view->core = 0;
+	$view->api_version = '2';
+	$view->disabled = FALSE; /* Edit this to true to make a default view disabled initially */
+	$handler = $view->new_display('default', 'Defaults', 'default');
+	$handler->override_option('fields', array(
+  'field_image_cache_fid' => array(
+    'id' => 'field_image_cache_fid',
+    'table' => 'node_data_field_image_cache',
+    'field' => 'field_image_cache_fid',
+  ),
+));
+$handler->override_option('sorts', array(
+  'nid' => array(
+    'order' => 'ASC',
+    'id' => 'nid',
+    'table' => 'node',
+    'field' => 'nid',
+    'relationship' => 'none',
+  ),
+));
+$handler->override_option('arguments', array(
+  'term_node_tid_depth' => array(
+    'id' => 'term_node_tid_depth',
+    'table' => 'node',
+    'field' => 'term_node_tid_depth',
+    'default_action' => 'not found',
+    'style_plugin' => 'default_summary',
+    'style_options' => array(
+      'count' => TRUE,
+      'override' => FALSE,
+      'items_per_page' => 25,
+    ),
+    'wildcard' => 'all',
+    'wildcard_substitution' => 'All',
+    'title' => '%1',
+    'default_argument_type' => 'fixed',
+    'default_argument' => '',
+    'validate_type' => 'taxonomy_term',
+    'validate_fail' => 'not found',
+    'depth' => '0',
+    'break_phrase' => 1,
+    'relationship' => 'none',
+    'default_argument_fixed' => '',
+    'default_argument_php' => '',
+    'validate_argument_node_type' => array(
+      'album' => 0,
+      'artist' => 0,
+      'book' => 0,
+      'page' => 0,
+      'story' => 0,
+      'track' => 0,
+    ),
+    'validate_argument_vocabulary' => array(
+      3 => 0,
+      4 => 0,
+      1 => 0,
+      5 => 0,
+      2 => 0,
+    ),
+    'validate_argument_type' => 'tids',
+    'validate_argument_php' => '',
+  ),
+  'term_node_tid_depth_modifier' => array(
+    'id' => 'term_node_tid_depth_modifier',
+    'table' => 'node',
+    'field' => 'term_node_tid_depth_modifier',
+    'default_action' => 'ignore',
+    'style_plugin' => 'default_summary',
+    'style_options' => array(
+      'count' => TRUE,
+      'override' => FALSE,
+      'items_per_page' => 25,
+    ),
+    'wildcard' => 'all',
+    'wildcard_substitution' => 'All',
+    'title' => '',
+    'default_argument_type' => 'fixed',
+    'default_argument' => '',
+    'validate_type' => 'none',
+    'validate_fail' => 'not found',
+  ),
+));
+$handler->override_option('filters', array(
+  'status_extra' => array(
+    'id' => 'status_extra',
+    'table' => 'node',
+    'field' => 'status_extra',
+    'operator' => '=',
+    'value' => '',
+    'group' => 0,
+    'exposed' => FALSE,
+    'expose' => array(
+      'operator' => FALSE,
+      'label' => '',
+    ),
+    'relationship' => 'none',
+  ),
+  'title' => array(
+    'operator' => '=',
+    'value' => '',
+    'group' => '0',
+    'exposed' => TRUE,
+    'expose' => array(
+      'use_operator' => FALSE,
+      'operator' => 'title_op',
+      'identifier' => 'title',
+      'label' => 'Node: Title',
+      'remember' => FALSE,
+      'single' => TRUE,
+      'optional' => TRUE,
+    ),
+    'case' => TRUE,
+    'id' => 'title',
+    'table' => 'node',
+    'field' => 'title',
+  ),
+  'type' => array(
+    'id' => 'type',
+    'table' => 'node',
+    'field' => 'type',
+  ),
+));
+$handler->override_option('access', array(
+  'type' => 'none',
+  'role' => array(),
+  'perm' => '',
+));
+$handler->override_option('cache', array(
+  'type' => 'none',
+));
+$handler->override_option('items_per_page', NULL);
+$handler->override_option('offset', NULL);
+$handler->override_option('use_pager', NULL);
+$handler->override_option('row_plugin', 'node');
+$handler->override_option('row_options', array(
+  'teaser' => TRUE,
+  'links' => TRUE,
+));
+$handler = $view->new_display('feed', 'Core feed', 'feed');
+$handler->override_option('style_plugin', 'rss');
+$handler->override_option('style_options', array(
+  'mission_description' => FALSE,
+  'description' => '',
+));
+$handler->override_option('row_plugin', 'node_rss');
+$handler->override_option('row_options', array(
+  'item_length' => 'default',
+));
+$handler->override_option('path', 'taxonomy/term/%/%/feed');
+$handler->override_option('menu', array(
+  'type' => 'none',
+  'title' => '',
+  'description' => '',
+  'weight' => 0,
+  'name' => 'navigation',
+));
+$handler->override_option('tab_options', array(
+  'type' => 'none',
+  'title' => '',
+  'description' => '',
+  'weight' => 0,
+  'name' => 'navigation',
+));
+$handler->override_option('displays', array(
+  'page' => 'page',
+  'default' => 0,
+));
+$handler->override_option('sitename_title', FALSE);
+$handler = $view->new_display('feed', 'Views 1 feed', 'feed_1');
+$handler->override_option('style_plugin', 'rss');
+$handler->override_option('style_options', array(
+  'mission_description' => FALSE,
+  'description' => '',
+));
+$handler->override_option('row_plugin', 'node_rss');
+$handler->override_option('row_options', array(
+  'item_length' => 'default',
+));
+$handler->override_option('path', 'taxonomy/term/%/feed');
+$handler->override_option('menu', array(
+  'type' => 'none',
+  'title' => '',
+  'description' => '',
+  'weight' => 0,
+  'name' => 'navigation',
+));
+$handler->override_option('tab_options', array(
+  'type' => 'none',
+  'title' => '',
+  'description' => '',
+  'weight' => 0,
+  'name' => 'navigation',
+));
+$handler->override_option('displays', array());
+$handler->override_option('sitename_title', FALSE);
+$handler = $view->new_display('page', 'Page', 'page_1');
+$handler->override_option('fields', array(
+  'nid' => array(
+    'label' => '',
+    'alter' => array(
+      'alter_text' => 0,
+      'text' => '',
+      'make_link' => 0,
+      'path' => '',
+      'absolute' => 0,
+      'link_class' => '',
+      'alt' => '',
+      'rel' => '',
+      'prefix' => '',
+      'suffix' => '',
+      'target' => '',
+      'help' => '',
+      'trim' => 0,
+      'max_length' => '',
+      'word_boundary' => 1,
+      'ellipsis' => 1,
+      'html' => 0,
+      'strip_tags' => 0,
+    ),
+    'empty' => '',
+    'hide_empty' => 0,
+    'empty_zero' => 0,
+    'hide_alter_empty' => 0,
+    'link_to_node' => 0,
+    'exclude' => 0,
+    'id' => 'nid',
+    'table' => 'node',
+    'field' => 'nid',
+    'override' => array(
+      'button' => 'Use default',
+    ),
+    'relationship' => 'none',
+  ),
+));
+$handler->override_option('sorts', array(
+  'nid' => array(
+    'order' => 'ASC',
+    'id' => 'nid',
+    'table' => 'node',
+    'field' => 'nid',
+    'relationship' => 'none',
+    'override' => array(
+      'button' => 'Use default',
+    ),
+  ),
+));
+$handler->override_option('arguments', array(
+  'term_node_tid_depth' => array(
+    'default_action' => 'default',
+    'style_plugin' => 'default_summary',
+    'style_options' => array(
+      'count' => TRUE,
+      'override' => FALSE,
+      'items_per_page' => 25,
+    ),
+    'wildcard' => 'all',
+    'wildcard_substitution' => 'All',
+    'title' => '%1',
+    'breadcrumb' => '',
+    'default_argument_type' => 'taxonomy_tid',
+    'default_argument' => '',
+    'validate_type' => 'taxonomy_term',
+    'validate_fail' => 'not found',
+    'depth' => '3',
+    'break_phrase' => 1,
+    'set_breadcrumb' => 0,
+    'use_taxonomy_term_path' => 1,
+    'id' => 'term_node_tid_depth',
+    'table' => 'node',
+    'field' => 'term_node_tid_depth',
+    'relationship' => 'none',
+    'default_argument_fixed' => '',
+    'default_argument_php' => '',
+    'validate_argument_node_type' => array(
+      'product' => 0,
+      'product_kit' => 0,
+      'image' => 0,
+      'page' => 0,
+      'slider' => 0,
+      'webform' => 0,
+    ),
+    'validate_argument_vocabulary' => array(
+      8 => 0,
+      5 => 0,
+      6 => 0,
+      1 => 0,
+      3 => 0,
+      11 => 0,
+    ),
+    'validate_argument_type' => 'tids',
+    'validate_argument_php' => '',
+    'validate_user_argument_type' => 'uid',
+    'validate_user_roles' => array(
+      2 => 0,
+    ),
+    'override' => array(
+      'button' => 'Use default',
+    ),
+    'default_options_div_prefix' => '',
+    'default_taxonomy_tid_term_page' => 0,
+    'default_taxonomy_tid_node' => 0,
+    'default_taxonomy_tid_limit' => 0,
+    'default_taxonomy_tid_vids' => array(
+      8 => 0,
+      5 => 0,
+      6 => 0,
+      1 => 0,
+      3 => 0,
+      11 => 0,
+    ),
+    'default_argument_user' => 0,
+    'default_argument_image_size' => '_original',
+    'validate_argument_node_access' => 0,
+    'validate_argument_nid_type' => 'nid',
+    'validate_argument_transform' => 0,
+    'validate_user_restrict_roles' => 0,
+    'image_size' => array(
+      '_original' => '_original',
+      'thumbnail' => 'thumbnail',
+      'preview' => 'preview',
+    ),
+  ),
+  'term_node_tid_depth_modifier' => array(
+    'default_action' => 'ignore',
+    'style_plugin' => 'default_summary',
+    'style_options' => array(
+      'count' => TRUE,
+      'override' => FALSE,
+      'items_per_page' => 25,
+    ),
+    'wildcard' => 'all',
+    'wildcard_substitution' => 'All',
+    'title' => '',
+    'breadcrumb' => '',
+    'default_argument_type' => 'fixed',
+    'default_argument' => '',
+    'validate_type' => 'none',
+    'validate_fail' => 'not found',
+    'id' => 'term_node_tid_depth_modifier',
+    'table' => 'node',
+    'field' => 'term_node_tid_depth_modifier',
+    'override' => array(
+      'button' => 'Use default',
+    ),
+    'relationship' => 'none',
+  ),
+));
+$handler->override_option('filters', array(
+  'status_extra' => array(
+    'id' => 'status_extra',
+    'table' => 'node',
+    'field' => 'status_extra',
+    'operator' => '=',
+    'value' => '',
+    'group' => 0,
+    'exposed' => FALSE,
+    'expose' => array(
+      'operator' => FALSE,
+      'label' => '',
+    ),
+    'relationship' => 'none',
+  ),
+  'type' => array(
+    'operator' => 'in',
+    'value' => array(
+      'product' => 'product',
+    ),
+    'group' => '0',
+    'exposed' => FALSE,
+    'expose' => array(
+      'operator' => FALSE,
+      'label' => '',
+    ),
+    'id' => 'type',
+    'table' => 'node',
+    'field' => 'type',
+    'override' => array(
+      'button' => 'Use default',
+    ),
+    'relationship' => 'none',
+  ),
+));
+$handler->override_option('use_ajax', TRUE);
+$handler->override_option('items_per_page', 10);
+$handler->override_option('offset', 0);
+$handler->override_option('use_pager', 'infinite-auto-load');
+$handler->override_option('style_plugin', 'grid');
+$handler->override_option('style_options', array(
+  'grouping' => '',
+  'columns' => '2',
+  'alignment' => 'horizontal',
+  'fill_single_line' => 1,
+  'summary' => '',
+));
+$handler->override_option('row_plugin', 'fields');
+$handler->override_option('row_options', array(
+  'inline' => array(),
+  'separator' => '',
+  'hide_empty' => 0,
+));
+$handler->override_option('path', 'taxonomy/term/%');
+$handler->override_option('menu', array(
+  'type' => 'none',
+  'title' => '',
+  'description' => '',
+  'weight' => 0,
+  'name' => 'navigation',
+));
+$handler->override_option('tab_options', array(
+  'type' => 'none',
+  'title' => '',
+  'description' => '',
+  'weight' => 0,
+  'name' => 'navigation',
+));
+
+$views['taxonomy_term'] = $view;
+  }
+}

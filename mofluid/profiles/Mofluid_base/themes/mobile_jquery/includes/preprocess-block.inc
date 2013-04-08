@@ -1,0 +1,5 @@
+<?php
+
+$block = $vars['block'];
+
+

@@ -1,0 +1,14 @@
+name = Dropdown attributes
+description = Allows you to specify children attributes to be displayed, depending on value of parent attribute.
+package = Ubercart - extra
+core = 6.x
+
+dependencies[] = uc_attribute
+
+
+; Information added by drupal.org packaging script on 2011-11-25
+version = "6.x-1.4"
+core = "6.x"
+project = "uc_dropdown_attributes"
+datestamp = "1322263249"
+

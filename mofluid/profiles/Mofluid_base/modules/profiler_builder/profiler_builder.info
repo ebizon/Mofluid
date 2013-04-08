@@ -1,0 +1,15 @@
+; $Id: profiler_builder
+name = "Profiler Builder"
+description = "Helper module for profiler to build distributions even faster"
+package = Development
+version = "6.x-1.0-alpha2"
+core = "6.x"
+project = "profiler_builder"
+project status url = "http://drupal.psu.edu/fserver"
+
+; Information added by drupal.org packaging script on 2012-01-29
+version = "6.x-1.0-beta1"
+core = "6.x"
+project = "profiler_builder"
+datestamp = "1327814145"
+

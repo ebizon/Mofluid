@@ -1,0 +1,23 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<products>
+<product>
+	<sku>MOF-E0001</sku>
+	<category>Sub Category AA1</category>
+	<price>0000.00</price>
+	<imageurl>image_2_27422.jpg</imageurl>
+	<smallimageurl>image_2_27422.jpg</smallimageurl>
+	<name>Mofluid test product 1</name>
+	<description>Here comes the description of your product. Make your own .xml file with product descriptions. For reference, go to import_products module of your distribution.
+	</description>
+	</product>
+<product>
+	<sku>MOF-E0002</sku>
+	<category>Sub Category AA1</category>
+	<price>0000.00</price>
+	<imageurl>image_4_841.jpg</imageurl>
+	<smallimageurl>image_4_841.jpg</smallimageurl>
+	<name>Mofluid test product 2</name>
+	<description>Here comes the description of your product. Make your own .xml file with product descriptions. For reference, go to import_products module of your distribution.
+	</description>
+	</product>
+</products>

@@ -1,0 +1,26 @@
+/* styles unrelated to zoom */
+		* { border:0; margin:0; padding:0; }
+		/*p { position:absolute; top:3px; right:28px; color:#555; font:bold 13px/1 sans-serif;}*/
+
+		/* optional icon style */
+		.zoomIcon { 
+			width:33px; 
+			height:33px; 
+			position:absolute; 
+			top:0;
+			right:0;
+			background:url(icon.png);
+		}
+
+		/* these styles are for the demo, and are not required for the plugin */
+		.zoom {
+			display:inline-block;
+			position:relative;
+		}
+
+		.zoom img {
+			display: block;
+		}
+
+		#ex2 img:hover { cursor: url(grab.cur), default; }
+		#ex2 img:active { cursor: url(grabbed.cur), default; }

@@ -1,0 +1,373 @@
+<?php
+
+//$Id$
+
+/*
+ * @file
+ *  Custom script
+ */
+
+/*
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Implementation of hook_menu().
+ * @return $items
+ *    associative array
+ */
+function mofluid_cart_menu() {
+  $items = array();
+  $items['cart/checkout/complete'] = array(
+    'title' => 'Order complete',
+    'description' => 'Display information upon completion of an order.',
+    'page callback' => 'custom_uc_cart_checkout_complete',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  $items['zipcode-validate'] = array(
+    'title' => 'zipcode-validate',
+    'description' => 'zipcode-validate.',
+    'page callback' => 'ajax_zipcode_validate',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['custom_cart/remove/item'] = array(
+    'title' => 'Remove Items From Shopping Cart',
+    'description' => 'Remove Items From Shopping Cart',
+    'page callback' => 'custom_cart_remove_item',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  $items['testpayment'] = array(
+    'title' => 'Test payment',
+    'description' => 'Remove Items From Shopping Cart',
+    'page callback' => 'test_payment',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+
+  return $items;
+}
+
+/*
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Completes the sale and finishes checkout..
+ * @return $items
+ *    associative array
+ */
+
+function custom_uc_cart_checkout_complete() {
+  if (!$_SESSION['do_complete']) {
+    drupal_goto('cart');
+  }
+  $output = '';
+  $order = uc_order_load(intval($_SESSION['cart_order']));
+
+  $context = array(
+    'revision' => 'themed',
+    'type' => 'price',
+  );
+  if (!empty($order)) {
+    $status = get_check_product_completion($order);
+    if ($status == 'fail') {
+      $output .='<div class="order-top"><div class="checkout-right">' . t('Sorry, your order is not completed.') . '</div></div>';
+    }
+    else {
+      $output = '<div class="order-top"><div class="checkout-right">' . t('THANK YOU FOR YOUR ORDER!') . '</div></div>';
+      $output .= '<div class="order-message">' . t('Your order is currently being processed. You may called by one of our executives to confirm the order.') . '</div>';
+
+      $order_details = '';
+      $order_details = '<div class="order-details">';
+      //$order_details = '<div class="order-details-heading"><span>'.t('ORDER DETAILS').'</span></div>';
+      foreach ($order->products as $pro) {
+        $node = node_load($pro->nid);
+        $terms = taxonomy_node_get_terms_by_vocabulary($node, 8);
+        $order_details .= '<div class="order-details-list"><div class="order-details-data"><span><b>' . t('Order Name: ') . '</b></span><span class="product-title">' . $pro->title . '</span></div>';
+        if ($terms) {
+          foreach ($terms as $term) {
+            $order_details .= '<div class="order-details-data"><span><b>' . t('Type: ') . '</b></span>' . $term->name . '</div>';
+          }
+        }
+        $order_details .= '<div class="order-details-data"><span><b>' . t('Price: ') . '</b></span>' . str_replace('Rs', '', uc_price($pro->price, $context)) . '</div></div>';
+      } //end forech
+      $order_details .='</div>';
+      $output .= $order_details;
+
+      $shipping_details = '<div class="shipping-details">';
+      $shipping_details .= '<div class="order-details-heading">' . t('SHIPPING ADDRESS') . '</div>';
+      $shipping_details .= '<div class="shipping-details-data">' . $order->billing_first_name . '</div>';
+      $shipping_details .= '<div class="shipping-details-data">' . $order->billing_street1 . '</div>';
+      $shipping_details .= '<div class="shipping-details-data">' . $order->billing_city . '</div>';
+      $shipping_details .= '<div class="shipping-details-data">' . $order->billing_postal_code . '</div>';
+      $shipping_details .= '<div class="shipping-details-data">' . get_state_fullname_zone_id($order->billing_zone) . '</div>';
+      $shipping_details .= '</div>';
+
+      $output .= $shipping_details;
+    } // end else
+  }
+
+  if (empty($order)) {
+    drupal_set_message(t("We're sorry.  An error occurred while processing your order that prevents us from completing it at this time. Please contact us and we will resolve the issue as soon as possible."), 'error');
+    watchdog('uc_cart', 'An empty order made it to checkout! Cart order ID: @cart_order', array('@cart_order' => $_SESSION['cart_order']), WATCHDOG_ERROR);
+    drupal_goto('cart');
+  }
+
+  $page = variable_get('uc_cart_checkout_complete_page', '');
+  if (!empty($page)) {
+    drupal_goto($page);
+  }
+
+  $output .= uc_cart_complete_sale($order, variable_get('uc_new_customer_login', TRUE));
+
+  // Add a comment to let sales team know this came in through the site.
+  //uc_order_comment_save($order->order_id, 0, t('Order created through website.'), 'admin');
+
+  $page = variable_get('uc_cart_checkout_complete_page', '');
+  if (!empty($page)) {
+    drupal_goto($page);
+  }
+
+  return $output;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Implementation of hook_theme().
+ * @return
+ *   $form an associative array of form elements.
+ */
+function mofluid_cart_theme() {
+  return array(
+    'uc_cart_view_form' => array(
+      'arguments' => array('form' => NULL),
+      'template' => 'uc_cart_view_form'),
+    'uc_cart_checkout_form' => array(
+      'arguments' => array('form' => NULL),
+      'template' => 'uc_cart_checkout_form'),
+  );
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function for - validation order.
+ * @para $order
+ *   Order as Object
+ * @return $success
+ *   string as fail on order failure and order id on order saved in his db.
+ */
+function get_check_product_completion($order) {
+  $order_arr = array();
+  $product_arr = array();
+  foreach ($order->products as $porder) {
+    $product_arr[] = array('product_id' => $porder->nid, 'qty' => $porder->qty);
+  }
+  $region_name = get_state_fullname_zone_id($order->billing_zone);
+  /*
+    $order_arr = array(
+    'key' => '1fddc6bbd390dc1ff95eaf0261d2fa94', // CONSTANT! Mandatory Key – Unique Identifier for Mobile Website
+    'firstname' => '"'.$order->billing_first_name.'"',
+    'lastname' => 'lastname',
+    'email' => '"'.$order->primary_email.'"',
+    'street' => '"'.$order->billing_street1.'"',
+    'city' => '"'.$order->billing_city.'"',
+    'region' => '"'.$region_name.'"',
+    'region_id' => '"'.$order->billing_zone.'"',
+    'postcode' => '"'.$order->billing_postal_code.'"',
+    'telephone' => '"'.$order->billing_phone.'"',
+    'products' =>  $product_arr
+    );
+   */
+
+  $order_arr = array(
+    'key' => '1fddc6bbd390dc1ff95eaf0261d2fa94', // CONSTANT! Mandatory Key – Unique Identifier for Mobile Website
+    'firstname' => $order->billing_first_name,
+    'lastname' => 'lastname',
+    'email' => $order->primary_email,
+    'street' => $order->billing_street1,
+    'city' => $order->billing_city,
+    'region' => $region_name,
+    'region_id' => $order->billing_zone,
+    'postcode' => $order->billing_postal_code,
+    'telephone' => $order->billing_phone,
+    'products' => $product_arr
+  );
+  $success = 'success';
+  //$success = file_get_contents('http://your_server/createorder.php?p=' . serialize($order_arr)); put your create order file here
+
+  return $success;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function for - validation product stock.
+ * @para $product_id
+ *   product id
+ * @return $output
+ *   string true if stock available else false
+ */
+function get_validate_product_stock($product_id) {
+  $stock_arr = array();
+  $product_arr = array();
+  $node = node_load($product_id);
+  $product_arr[] = array('product_id' => $node->nid, 'qty' => $node->qty);
+
+  $stock_arr = array(
+    'key' => '1fddc6bbd390dc1ff95eaf0261d2fa94',
+    'products' => $product_arr,
+  );
+
+  //$output = file_get_contents('http://your_server/checkstock.php?p=' . serialize($stock_arr)); put your stock file here
+  //$final_output = unserialize($final_output);
+  //return $final_output;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function for - validation zip code.
+ * @para $pincode
+ *   pin code
+ * @return $pincode_status
+ *   string true if pin code available on that area else false
+ */
+function get_validate_pincode($pincode) {
+  $pincode_arr = array();
+  $pincode_arr = array(
+    'key' => '1fddc6bbd390dc1ff95eaf0261d2fa94',
+    'zip' => $pincode,
+  );
+  //print_r(serialize($pincode_arr));die;
+  $pincode_status = file_get_contents($base_url.'/profiles/Mofluid_base/required_files/webservices/pcv.php?p=' . serialize($pincode_arr));  // put your pin code validation file here
+  $final_pincode = unserialize($pincode_status);
+  return $final_pincode['status'];
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Implementing hook_form_alter().
+ * It is because we have alter address textfield to address textarea on checkout page
+ */
+function mofluid_cart_form_alter(&$form, $form_state, $form_id) {
+  if ($form_id == 'uc_cart_checkout_form') {
+    unset($form['panes']['billing']['billing_street1']);
+    $form['panes']['billing']['billing_street1'] = array(
+      '#type' => 'textarea',
+      '#title' => t('Address'),
+      '#required' => TRUE,
+      '#rows' => 5,
+      '#cols' => 17,
+    );
+  }
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function to get state full name by short name.
+ * @para $state_short
+ *    state short name like up,ap,mp etc
+ * @return $state_fullname
+ *     state fullname
+ */
+function get_state_fullname_zone_code($state_short) {
+  $india = 356;
+  $state_fullname = db_result(db_query("SELECT zone_name FROM uc_zones WHERE zone_code = '%s' AND zone_country_id = %d", $state_short, $india));
+  return $state_fullname;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function to get state full name by short name.
+ * @para $state_short
+ *    state short name like up,ap,mp etc
+ * @return $state_fullname
+ *     state fullname
+ */
+function get_state_fullname_zone_id($zone_id) {
+  $india = 356;
+  $state_fullname = db_result(db_query("SELECT zone_name FROM uc_zones WHERE zone_id = %d AND zone_country_id = %d", $zone_id, $india));
+  if ($state_fullname != '') {
+    $state_fullname = str_replace(" ", "", $state_fullname);
+  }
+  return $state_fullname;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function to get zone id by zone name.
+ * @para $zone_name
+ *    state short name like up,ap,mp etc
+ * @return $zone_id
+ *     state fullname
+ */
+function get_zone_id($zone_name) {
+  $india = 356;
+  $zone_id = db_result(db_query("SELECT zone_id FROM uc_zones WHERE zone_name = '%s' AND zone_country_id = %d", $zone_name, $india));
+  return $zone_id;
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function to validate zip code by ajax call back function.
+ */
+function ajax_zipcode_validate() {
+  //print '1';return;
+  $zipcode = check_plain($_REQUEST['zipcode']);
+  $zipstatus = get_validate_pincode($zipcode);
+  if ($zipstatus == 'true') {
+    print '1';
+  }
+  else {
+    print '0';
+  }
+}
+
+/**
+ * o Contributor: * o Devendra, Ebizon Netinfo (devendra@ebizontek.com) – Function  update shopping cart.
+ */
+function custom_cart_remove_item() {
+  $cart_id = !(is_null($cid) || empty($cid)) ? $cid : uc_cart_get_id();
+  $nid = check_plain($_REQUEST['nid']);
+  $node = node_load($nid);
+  $destination = check_plain($_REQUEST['destination']);
+  $data = $_REQUEST['data'];
+  $action = check_plain($_REQUEST['action']);
+  $action_flag = ($action) ? 1 : 0;
+  $qty = check_plain($_REQUEST['qty']);
+  $items_data['items'][] = array(
+    'nid' => $nid,
+    'module' => 'uc_product',
+    'remove' => $action_flag,
+    'title' => l($node->title, 'node/' . $node->nid),
+    'data' => $data,
+    'qty' => $qty,
+    'description' => '',
+  );
+  uc_cart_update_item_object((object) $items_data);
+  drupal_goto($destination);
+}
+
+function test_payment() {
+  $items = array();
+  drupal_set_message("formate will be : &name=test&email=test@gamil.com&address=sector-12&city=noida&state=utter pradesh&postcode=210301&telephone=34546782938&product_id=123&qty=1");
+  $firstname = check_plain($_GET['name']);
+  $email = check_plain($_GET['email']);
+  $street = check_plain($_GET['address']);
+  $city = check_plain($_GET['city']);
+  $region = check_plain($_GET['state']);
+  $region_id = get_zone_id($region);
+  $postcode = check_plain($_GET['postcode']);
+  $telephone = check_plain($_GET['telephone']);
+  $product_id = check_plain($_GET['product_id']);
+  $qty = check_plain($_GET['qty']);
+  $product_arr[] = array('product_id' => $product_id, 'qty' => $qty);
+  $order_arr = array(
+    'key' => '1fddc6bbd390dc1ff95eaf0261d2fa94', // CONSTANT! Mandatory Key – Unique Identifier for Mobile Website
+    'firstname' => '"' . $firstname . '"',
+    'lastname' => '"' . $firstname . '"',
+    'email' => '"' . $email . '"',
+    'street' => '"' . $street . '"',
+    'city' => '"' . $city . '"',
+    'region' => '"' . $region . '"',
+    'region_id' => '"' . $region_id . '"',
+    'postcode' => '"' . $postcode . '"',
+    'telephone' => '"' . $telephone . '"',
+    'products' => $product_arr
+  );
+
+  if ($_GET['name'] != '' && $_GET['email'] != '' && $_GET['address'] != '' && $_GET['city'] != '' && $_GET['state'] != '' && $_GET['postcode'] != '' && $_GET['telephone'] != '' && $_GET['product_id'] != '') {
+    $success = "success";
+	//$success = file_get_contents('http://your_server/createorder.php?p=' . serialize($order_arr));
+  }
+
+  $output = "Payment Status: " . $success;
+
+  return $output;
+}
