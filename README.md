@@ -31,3 +31,8 @@ Important notes:
 2) Enter "mofluid" into the box and press "preview" button.
 (To go to payment page using paypal, go to admin->store administration->configuration->payment settings 
 and edit the payment methods and payment getaways to suit your paypal developer account.)
+
+You can get more detailed information about Mofluid at following link  :
+
+Link: http://ebizontech.com/~os-mcart/how-to-install-os-mcart/
+
