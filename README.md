@@ -34,7 +34,6 @@ Important notes:
 (To go to payment page using paypal, go to admin->store administration->configuration->payment settings 
 and edit the payment methods and payment getaways to suit your paypal developer account.)
 
-You can get more detailed information about Mofluid at following link  :
 
 
 
