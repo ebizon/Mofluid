@@ -1,6 +1,8 @@
 Mofluid
 =======
 
+Reference - www.Mofluid.com
+
 Installation Steps :
 
 1) Copy folder "mofluid", file "iframetry" , image "iphone-frame" and paste into your localserver path(e.g at "../var/www" [For UBUNTU]).
@@ -34,5 +36,5 @@ and edit the payment methods and payment getaways to suit your paypal developer 
 
 You can get more detailed information about Mofluid at following link  :
 
-Link: www.Mofluid.com
+
 
