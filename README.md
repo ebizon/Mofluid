@@ -34,5 +34,5 @@ and edit the payment methods and payment getaways to suit your paypal developer 
 
 You can get more detailed information about Mofluid at following link  :
 
-Link: http://ebizontech.com/~os-mcart/how-to-install-os-mcart/
+Link: www.Mofluid.com
 
